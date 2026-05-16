@@ -1,0 +1,180 @@
+trigger:
+  branches:
+    include:
+      - master
+pool: 
+
+  name: pool1
+
+variables:
+  buildConfiguration: 'Release'
+  imageTag: '$(Build.BuildId)'
+  namespace: 'banking'
+
+stages:
+
+# =========================================================
+# BUILD STAGE
+# =========================================================
+- stage: Build
+  jobs:
+    - job: BuildJob
+      steps:
+
+        - task: UseDotNet@2
+          inputs:
+            packageType: sdk
+            version: '8.x'
+
+        - task: DotNetCoreCLI@2
+          inputs:
+            command: restore
+            projects: '**/*.sln'
+
+        - task: DotNetCoreCLI@2
+          inputs:
+            command: build
+            projects: '**/*.sln'
+            arguments: '--configuration $(buildConfiguration)'
+
+        - task: DotNetCoreCLI@2
+          inputs:
+            command: test
+            projects: '**/*Tests/*.csproj'
+            arguments: '--configuration $(buildConfiguration)'
+
+
+# =========================================================
+# DOCKER BUILD + PUSH
+# =========================================================
+- stage: DockerBuild
+  dependsOn: Build
+  jobs:
+
+    - job: DockerJob
+      steps:
+
+        - script: |
+            echo "Azure Login..."
+
+            az login --service-principal \
+              --username "$(AZURE_CLIENT_ID)" \
+              --password "$(AZURE_CLIENT_SECRET)" \
+              --tenant "$(AZURE_TENANT_ID)"
+
+            az account set \
+              --subscription "$(AZURE_SUBSCRIPTION_ID)"
+
+          displayName: Azure Login
+
+        - script: |
+            echo "ACR Login..."
+
+            az acr login --name $(ACR_NAME)
+
+          displayName: ACR Login
+
+        - script: |
+            docker build -t $(ACR_NAME).azurecr.io/customer-api:$(imageTag) -f src/Services/Customer/Customer.API/Dockerfile .
+            docker push $(ACR_NAME).azurecr.io/customer-api:$(imageTag)
+          displayName: Customer API
+
+        - script: |
+            docker build -t $(ACR_NAME).azurecr.io/account-api:$(imageTag) -f src/Services/Account/Account.API/Dockerfile .
+            docker push $(ACR_NAME).azurecr.io/account-api:$(imageTag)
+          displayName: Account API
+
+        - script: |
+            docker build -t $(ACR_NAME).azurecr.io/transaction-api:$(imageTag) -f src/Services/Transaction/Transaction.API/Dockerfile .
+            docker push $(ACR_NAME).azurecr.io/transaction-api:$(imageTag)
+          displayName: Transaction API
+
+        - script: |
+            docker build -t $(ACR_NAME).azurecr.io/gateway-api:$(imageTag) -f src/ApiGateway/Gateway.API/Dockerfile .
+            docker push $(ACR_NAME).azurecr.io/gateway-api:$(imageTag)
+          displayName: Gateway API
+
+
+# =========================================================
+# APPROVAL
+# =========================================================
+- stage: Approval
+  dependsOn: DockerBuild
+  jobs:
+    - job: WaitForApproval
+      pool: server
+      steps:
+        - task: ManualValidation@0
+          inputs:
+            instructions: "Approve deployment to AKS"
+
+
+# =========================================================
+# DEPLOY TO AKS (HELM)
+# =========================================================
+- stage: HelmDeploy
+  dependsOn: Approval
+  jobs:
+
+    - deployment: DeployToAKS
+      environment: aks-dev
+
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+
+              - script: |
+                  echo "Azure Login..."
+
+                  az login --service-principal \
+                    --username "$(AZURE_CLIENT_ID)" \
+                    --password "$(AZURE_CLIENT_SECRET)" \
+                    --tenant "$(AZURE_TENANT_ID)"
+
+                  az account set \
+                    --subscription "$(AZURE_SUBSCRIPTION_ID)"
+
+                displayName: Azure Login
+
+              - script: |
+                  echo "Getting AKS credentials..."
+
+                  az aks get-credentials \
+                    --resource-group $(AKS_RESOURCE_GROUP) \
+                    --name $(AKS_CLUSTER_NAME) \
+                    --overwrite-existing
+
+                displayName: AKS Login
+
+              - task: HelmInstaller@1
+                inputs:
+                  helmVersionToInstall: latest
+
+              - script: |
+                  helm upgrade --install customer-api helm/customer-api \
+                    --namespace $(namespace) --create-namespace \
+                    --set image.repository=$(ACR_NAME).azurecr.io/customer-api \
+                    --set image.tag=$(imageTag)
+                displayName: Deploy Customer API
+
+              - script: |
+                  helm upgrade --install account-api helm/account-api \
+                    --namespace $(namespace) --create-namespace \
+                    --set image.repository=$(ACR_NAME).azurecr.io/account-api \
+                    --set image.tag=$(imageTag)
+                displayName: Deploy Account API
+
+              - script: |
+                  helm upgrade --install transaction-api helm/transaction-api \
+                    --namespace $(namespace) --create-namespace \
+                    --set image.repository=$(ACR_NAME).azurecr.io/transaction-api \
+                    --set image.tag=$(imageTag)
+                displayName: Deploy Transaction API
+
+              - script: |
+                  helm upgrade --install gateway-api helm/gateway-api \
+                    --namespace $(namespace) --create-namespace \
+                    --set image.repository=$(ACR_NAME).azurecr.io/gateway-api \
+                    --set image.tag=$(imageTag)
+                displayName: Deploy Gateway API
