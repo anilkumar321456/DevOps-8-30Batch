@@ -139,12 +139,26 @@ jobs:
     - name: Deploy to Kubernetes
       run: |
 
-        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
+        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
 
-          # Go to project folder
+          # ======================================================
+          # CLONE REPOSITORY IF NOT EXISTS
+          # ======================================================
+
+          if [ ! -d "DevOps-8-30Batch" ]; then
+            git clone https://github.com/anilkumar321456/DevOps-8-30Batch.git
+          fi
+
+          # ======================================================
+          # GO TO PROJECT DIRECTORY
+          # ======================================================
+
           cd DevOps-8-30Batch
 
-          # Pull latest code
+          # ======================================================
+          # PULL LATEST CODE
+          # ======================================================
+
           git pull origin main
 
 
@@ -164,13 +178,13 @@ jobs:
           # ======================================================
 
           kubectl set image deployment/customer-api \
-          customer-api=${{ env.IMAGE_NAMESPACE }}/customer-api:${{ github.sha }}
+          customer-api=anildevopsr15/customer-api:${{ github.sha }}
 
           kubectl set image deployment/account-api \
-          account-api=${{ env.IMAGE_NAMESPACE }}/account-api:${{ github.sha }}
+          account-api=anildevopsr15/account-api:${{ github.sha }}
 
           kubectl set image deployment/transaction-api \
-          transaction-api=${{ env.IMAGE_NAMESPACE }}/transaction-api:${{ github.sha }}
+          transaction-api=anildevopsr15/transaction-api:${{ github.sha }}
 
 
           # ======================================================
@@ -185,7 +199,7 @@ jobs:
 
 
           # ======================================================
-          # VERIFY RESOURCES
+          # VERIFY DEPLOYMENTS
           # ======================================================
 
           kubectl get deployments
