@@ -18,7 +18,7 @@ jobs:
     steps:
 
     # ==========================================================
-    # CHECKOUT CODE
+    # CHECKOUT SOURCE CODE
     # ==========================================================
     - name: Checkout Source Code
       uses: actions/checkout@v4
@@ -126,7 +126,7 @@ jobs:
 
 
     # ==========================================================
-    # ADD KNOWN HOST
+    # ADD EC2 TO KNOWN HOSTS
     # ==========================================================
     - name: Add EC2 to Known Hosts
       run: |
@@ -134,12 +134,34 @@ jobs:
 
 
     # ==========================================================
-    # DEPLOY TO MINIKUBE
+    # DEPLOY TO KUBERNETES
     # ==========================================================
     - name: Deploy to Kubernetes
       run: |
 
         ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
+
+          # Go to project folder
+          cd DevOps-8-30Batch
+
+          # Pull latest code
+          git pull origin main
+
+
+          # ======================================================
+          # APPLY KUBERNETES YAML FILES
+          # ======================================================
+
+          kubectl apply -f "src/apiVersion: apps/customer-api-deployment.yaml"
+
+          kubectl apply -f "src/apiVersion: apps/account-api-deployment.yaml"
+
+          kubectl apply -f "src/apiVersion: apps/transaction-api-deployment.yaml"
+
+
+          # ======================================================
+          # UPDATE IMAGES
+          # ======================================================
 
           kubectl set image deployment/customer-api \
           customer-api=${{ env.IMAGE_NAMESPACE }}/customer-api:${{ github.sha }}
@@ -150,12 +172,26 @@ jobs:
           kubectl set image deployment/transaction-api \
           transaction-api=${{ env.IMAGE_NAMESPACE }}/transaction-api:${{ github.sha }}
 
+
+          # ======================================================
+          # CHECK ROLLOUT STATUS
+          # ======================================================
+
           kubectl rollout status deployment/customer-api
 
           kubectl rollout status deployment/account-api
 
           kubectl rollout status deployment/transaction-api
 
+
+          # ======================================================
+          # VERIFY RESOURCES
+          # ======================================================
+
+          kubectl get deployments
+
           kubectl get pods
+
+          kubectl get svc
 
         EOF
