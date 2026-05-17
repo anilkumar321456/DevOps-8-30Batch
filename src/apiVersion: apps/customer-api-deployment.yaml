@@ -1,4 +1,4 @@
-]apiVersion: apps/v1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: customer-api
@@ -21,6 +21,8 @@ spec:
 
         image: anildevopsr15/customer-api:latest
 
+        imagePullPolicy: Always
+
         ports:
         - containerPort: 8080
 
@@ -32,7 +34,7 @@ spec:
           value: "Server=customer-postgres;Port=5432;Database=customerdb;User Id=postgres;Password=postgres"
 
         - name: EventBusSettings__HostAddress
-          value: "rabbitmq"
+          value: "amqp://guest:guest@rabbitmq:5672"
 
 ---
 apiVersion: v1
@@ -74,6 +76,8 @@ spec:
       - name: customer-postgres
 
         image: postgres:15
+
+        imagePullPolicy: Always
 
         ports:
         - containerPort: 5432
