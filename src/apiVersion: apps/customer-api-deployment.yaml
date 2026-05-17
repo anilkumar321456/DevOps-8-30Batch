@@ -1,32 +1,106 @@
-apiVersion: apps/v1
+]apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: customer-api
+
 spec:
   replicas: 1
+
   selector:
     matchLabels:
       app: customer-api
+
   template:
     metadata:
       labels:
         app: customer-api
+
     spec:
       containers:
       - name: customer-api
-        image: nginx
+
+        image: anildevopsr15/customer-api:latest
+
         ports:
-        - containerPort: 80
+        - containerPort: 8080
+
+        env:
+        - name: ASPNETCORE_URLS
+          value: "http://+:8080"
+
+        - name: ConnectionStrings__Database
+          value: "Server=customer-postgres;Port=5432;Database=customerdb;User Id=postgres;Password=postgres"
+
+        - name: EventBusSettings__HostAddress
+          value: "rabbitmq"
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: customer-api-service
+
 spec:
   selector:
     app: customer-api
+
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 80
+      targetPort: 8080
+
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-postgres
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: customer-postgres
+
+  template:
+    metadata:
+      labels:
+        app: customer-postgres
+
+    spec:
+      containers:
+      - name: customer-postgres
+
+        image: postgres:15
+
+        ports:
+        - containerPort: 5432
+
+        env:
+        - name: POSTGRES_USER
+          value: postgres
+
+        - name: POSTGRES_PASSWORD
+          value: postgres
+
+        - name: POSTGRES_DB
+          value: customerdb
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-postgres
+
+spec:
+  selector:
+    app: customer-postgres
+
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+
   type: ClusterIP
