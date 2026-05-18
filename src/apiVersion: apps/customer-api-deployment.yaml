@@ -16,6 +16,17 @@ spec:
         app: customer-api
 
     spec:
+
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox
+        command:
+          [
+            "sh",
+            "-c",
+            "until nc -z customer-postgres 5432; do echo waiting for postgres; sleep 2; done;"
+          ]
+
       containers:
       - name: customer-api
 
